@@ -1,0 +1,57 @@
+version: "2"
+
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+
+linters:
+  default: all
+  disable:
+    - cyclop
+    - depguard
+    - exhaustruct
+    - forbidigo
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst
+    - govet
+    - ireturn
+    - mnd
+    - nlreturn
+    - noctx
+    - noinlineerr
+    - paralleltest
+    - revive
+    - testpackage
+    - varnamelen
+    - wrapcheck
+    - wsl
+    - wsl_v5
+    - tagliatelle
+    - perfsprint
+    - gocognit
+    - errcheck
+    - lll
+    - nestif
+    - gocyclo
+
+  settings:
+    errcheck:
+      check-blank: true
+    gosec:
+      severity: medium
+      confidence: medium
+    govet:
+      enable-all: true
+    staticcheck:
+      checks:
+        - "all"
+    unused:
+      check-exported: false
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-use-default: false
