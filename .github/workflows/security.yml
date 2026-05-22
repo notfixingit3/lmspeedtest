@@ -1,0 +1,54 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  gosec:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run gosec
+        uses: securego/gosec@master
+        with:
+          args: "-exclude-generated -severity=medium -confidence=medium -fmt json -out gosec-report.json ./..."
+
+      - name: Upload gosec report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gosec-report
+          path: gosec-report.json
+
+      - name: Create badge
+        if: github.ref == 'refs/heads/main'
+        run: |
+          issues=$(jq '.Stats.found // 0' gosec-report.json)
+          if [ "$issues" -eq 0 ]; then
+            color="green"
+            label="passing"
+          else
+            color="yellow"
+            label="${issues}%20issues"
+          fi
+          curl -s "https://img.shields.io/badge/gosec-${label}-${color}?style=for-the-badge" -o gosec-badge.svg
+
+      - name: Upload badge
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gosec-badge
+          path: gosec-badge.svg
