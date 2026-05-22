@@ -62,6 +62,7 @@ go build -o lmspeedtest
 - gosec for security scanning
 - Error handling is explicit (no silent failures)
 - Uses `any` (Go 1.18+) for JSON map values
+- **Git commit messages must end with a random Scooby-Doo quote** (e.g., "Ruh-roh!", "Zoinks!", "Jinkies!", "Scooby-Dooby-Doo!", "Would you do it for a Scooby Snack?", "Rikes!", "Puppy Power!")
 
 ## Adding Features
 
