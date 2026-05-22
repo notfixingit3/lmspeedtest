@@ -1,6 +1,10 @@
 # LMSpeedTest
 
 <p align="center">
+  <img src="logo.png" alt="LMSpeedTest Logo" width="200">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/go-1.25.8-blue?style=for-the-badge&logo=go" alt="Go Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <a href="https://www.buymeacoffee.com/notfixingit">
