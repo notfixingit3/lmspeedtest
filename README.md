@@ -6,6 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/go-1.25.8-blue?style=for-the-badge&logo=go" alt="Go Version">
+  <img src="https://img.shields.io/badge/gosec-passing-green?style=for-the-badge" alt="gosec">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <a href="https://www.buymeacoffee.com/notfixingit">
     <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me A Coffee">
