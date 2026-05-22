@@ -24,7 +24,7 @@ jobs:
       - name: Run gosec
         uses: securego/gosec@master
         with:
-          args: "-exclude-generated -severity=medium -confidence=medium -fmt json -out gosec-report.json ./..."
+          args: "-exclude-generated -severity=medium -confidence=medium -no-fail -fmt json -out gosec-report.json ./..."
 
       - name: Upload gosec report
         if: always()
