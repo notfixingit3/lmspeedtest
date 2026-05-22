@@ -1,5 +1,3 @@
-# LMSpeedTest
-
 <p align="center">
   <img src="logo.png" alt="LMSpeedTest Logo" width="400">
 </p>
