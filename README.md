@@ -283,5 +283,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  Made with ❤️ by <a href="https://github.com/notfixingit3">@notfixingit3</a>
+  Made with a fucked-up back and extremely questionable sleep habits by <a href="https://github.com/notfixingit3">@notfixingit3</a>
 </p>
