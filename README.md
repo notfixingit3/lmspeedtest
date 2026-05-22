@@ -18,6 +18,22 @@
 
 ---
 
+## 📸 Screenshots
+
+<p align="center">
+  <img src="screenshots/help.png" alt="Help output" width="700">
+</p>
+
+<p align="center">
+  <img src="screenshots/models.png" alt="Models list" width="700">&nbsp;&nbsp;
+  <img src="screenshots/dashboard.png" alt="Dashboard" width="700">
+</p>
+
+<p align="center">
+  <img src="screenshots/doctor.png" alt="Doctor diagnostics" width="500">&nbsp;&nbsp;
+  <img src="screenshots/info.png" alt="Server info" width="500">
+</p>
+
 ## ✨ Features
 
 - 🎯 **Interactive Model Selection** — Beautiful TUI multi-select with filtering by size and name
@@ -120,11 +136,12 @@ chmod +x lmspeedtest
 | `connect --use <name>` | Switch to a different server profile |
 | `connect --remove <name>` | Remove a server profile |
 | `info` | Show server version, host, and auth status |
+| `doctor` | Run diagnostics: check config, connectivity, and permissions |
 | `models [max_gb] [name_filter]` | List models with metadata (params, quantization) |
 | `test <max_gb> [opts]` | Benchmark matching models |
 | `dashboard` | Show latest results per model |
 | `compare <model>` | Compare all context sizes for a model |
-| `export [--format fmt]` | Export results (csv, json, benchstat) |
+| `export [--format fmt]` | Export results (csv, json, benchstat, markdown) |
 | `reset` | Clear all benchmark results |
 | `serve [--port N]` | Start web dashboard (default: 8080) |
 
