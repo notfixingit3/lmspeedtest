@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -111,11 +112,35 @@ func exportCmd() {
 }
 
 func infoCmd() {
+	jsonOutput := hasJSONFlag()
 	profile := activeProfile()
+	
+	type InfoResult struct {
+		Profile   string `json:"profile"`
+		Provider  string `json:"provider"`
+		Host      string `json:"host"`
+		Version   string `json:"version,omitempty"`
+		Auth      bool   `json:"auth"`
+		Connected bool   `json:"connected"`
+	}
+	
+	result := InfoResult{
+		Profile: profile.Name,
+		Host:    profile.Host,
+		Auth:    profile.Token != "",
+	}
+	
 	if profile.Provider == "lmstudio" {
+		result.Provider = "LM Studio"
 		req, err := http.NewRequest(http.MethodGet, profile.Host+"/api/v1/models", nil)
 		if err != nil {
-			printError("Cannot create request", err)
+			if jsonOutput {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				result.Connected = false
+				_ = json.NewEncoder(os.Stdout).Encode(result)
+			} else {
+				printError("Cannot create request", err)
+			}
 			return
 		}
 		if profile.Token != "" {
@@ -123,10 +148,15 @@ func infoCmd() {
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			// Fallback to /v1/models
 			req, err = http.NewRequest(http.MethodGet, profile.Host+"/v1/models", nil)
 			if err != nil {
-				printError("Cannot create request", err)
+				if jsonOutput {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					result.Connected = false
+					_ = json.NewEncoder(os.Stdout).Encode(result)
+				} else {
+					printError("Cannot create request", err)
+				}
 				return
 			}
 			if profile.Token != "" {
@@ -135,18 +165,34 @@ func infoCmd() {
 			resp, err = http.DefaultClient.Do(req)
 		}
 		if err != nil {
-			printError("Cannot connect to LM Studio", err)
+			if jsonOutput {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				result.Connected = false
+				_ = json.NewEncoder(os.Stdout).Encode(result)
+			} else {
+				printError("Cannot connect to LM Studio", err)
+			}
 			return
 		}
-		defer func() {
-			_ = resp.Body.Close()
-		}()
+
 
 		if resp.StatusCode != http.StatusOK {
-			printError(fmt.Sprintf("LM Studio returned status %d", resp.StatusCode), nil)
+			if jsonOutput {
+				fmt.Fprintf(os.Stderr, "Error: LM Studio returned status %d\n", resp.StatusCode)
+				result.Connected = false
+				_ = json.NewEncoder(os.Stdout).Encode(result)
+			} else {
+				printError(fmt.Sprintf("LM Studio returned status %d", resp.StatusCode), nil)
+			}
 			return
 		}
-
+		result.Connected = true
+		
+		if jsonOutput {
+			_ = json.NewEncoder(os.Stdout).Encode(result)
+			return
+		}
+		
 		fmt.Printf("\n%s\n", titleStyle.Render("ℹ️  Server Info"))
 		fmt.Println(separatorStyle.Render(strings.Repeat("═", 50)))
 		fmt.Printf("%s %s\n", infoStyle.Render("Profile:"), modelNameStyle.Render(profile.Name))
@@ -159,15 +205,28 @@ func infoCmd() {
 			fmt.Printf("%s %s\n", infoStyle.Render("Auth:"), warningStyle.Render("none"))
 		}
 	} else {
+		result.Provider = "Ollama"
 		req, err := newAPIRequest("GET", profile.Host+"/api/version", nil)
 		if err != nil {
-			printError("Cannot create request", err)
+			if jsonOutput {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				result.Connected = false
+				_ = json.NewEncoder(os.Stdout).Encode(result)
+			} else {
+				printError("Cannot create request", err)
+			}
 			return
 		}
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			printError("Cannot connect to Ollama", err)
+			if jsonOutput {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				result.Connected = false
+				_ = json.NewEncoder(os.Stdout).Encode(result)
+			} else {
+				printError("Cannot connect to Ollama", err)
+			}
 			return
 		}
 		defer func() {
@@ -180,7 +239,20 @@ func infoCmd() {
 			Version string `json:"version"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&versionResp); err != nil {
-			printError("Cannot decode version response", err)
+			if jsonOutput {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				result.Connected = false
+				_ = json.NewEncoder(os.Stdout).Encode(result)
+			} else {
+				printError("Cannot decode version response", err)
+			}
+			return
+		}
+		result.Connected = true
+		result.Version = versionResp.Version
+		
+		if jsonOutput {
+			_ = json.NewEncoder(os.Stdout).Encode(result)
 			return
 		}
 
@@ -210,75 +282,6 @@ func infoCmd() {
 	}
 }
 
-func compareCmd() {
-	if len(os.Args) < 3 {
-		fmt.Println("Usage: lmspeedtest compare <model_name>")
-		return
-	}
-	modelName := os.Args[2]
-
-	var allTests []TestResult
-	for _, serverData := range results {
-		if tests, ok := serverData[modelName]; ok {
-			allTests = append(allTests, tests...)
-		}
-	}
-
-	if len(allTests) == 0 {
-		fmt.Printf("%s %s\n",
-			warningStyle.Render("No results found for model:"),
-			modelNameStyle.Render(modelName))
-		return
-	}
-
-	sort.Slice(allTests, func(i, j int) bool {
-		return allTests[i].Timestamp.After(allTests[j].Timestamp)
-	})
-
-	fmt.Printf("\n%s\n",
-		titleStyle.Render(fmt.Sprintf("📊 Comparing %s", modelName)))
-	fmt.Println(separatorStyle.Render(strings.Repeat("═", 110)))
-	fmt.Printf("%s %s %s %s %s %s\n",
-		headerStyle.Render(fmt.Sprintf("%10s", "CONTEXT")),
-		headerStyle.Render(fmt.Sprintf("%14s", "TOKENS/SEC")),
-		headerStyle.Render(fmt.Sprintf("%14s", "PROMPT TPS")),
-		headerStyle.Render(fmt.Sprintf("%12s", "TTFT")),
-		headerStyle.Render(fmt.Sprintf("%12s", "SERVER")),
-		headerStyle.Render(fmt.Sprintf("%18s", "TESTED")))
-	fmt.Println(separatorStyle.Render(strings.Repeat("═", 110)))
-
-	for _, r := range allTests {
-		ctxLabel := fmt.Sprintf("%dk", r.Context/1024)
-		fmt.Printf("%s %s %s %s %s %s\n",
-			ctxStyle.Render(fmt.Sprintf("%10s", ctxLabel)),
-			metricStyle.Render(fmt.Sprintf("%14.2f", r.TPS)),
-			infoStyle.Render(fmt.Sprintf("%14.2f", r.PromptEvalTPS)),
-			metricStyle.Render(fmt.Sprintf("%12s", formatDuration(r.TTFT))),
-			infoStyle.Render(fmt.Sprintf("%12s", resultServerLabel(r))),
-			infoStyle.Render(fmt.Sprintf("%18s", r.Timestamp.Format("2006-01-02 15:04"))))
-	}
-
-	if len(allTests) > 1 {
-		var sum, minTPS, maxTPS float64
-		minTPS = allTests[0].TPS
-		for _, t := range allTests {
-			sum += t.TPS
-			if t.TPS < minTPS {
-				minTPS = t.TPS
-			}
-			if t.TPS > maxTPS {
-				maxTPS = t.TPS
-			}
-		}
-		avg := sum / float64(len(allTests))
-		fmt.Println(separatorStyle.Render(strings.Repeat("─", 110)))
-		fmt.Printf("%s %s %s %s\n",
-			infoStyle.Render(fmt.Sprintf("%10s", "STATS")),
-			metricStyle.Render(fmt.Sprintf("avg: %.2f", avg)),
-			metricStyle.Render(fmt.Sprintf("min: %.2f", minTPS)),
-			metricStyle.Render(fmt.Sprintf("max: %.2f", maxTPS)))
-	}
-}
 
 func resultServerLabel(r TestResult) string {
 	if r.ServerName != "" {
@@ -346,7 +349,88 @@ const (
 	genericLogoDataURI  = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23475569'/%3E%3Cpath d='M9 11h14M9 16h14M9 21h14' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E`
 )
 
+func compareCmd() {
+	jsonOutput := hasJSONFlag()
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: lmspeedtest compare <model_name>")
+		return
+	}
+	modelName := os.Args[2]
+
+	var allTests []TestResult
+	for _, serverData := range results {
+		if tests, ok := serverData[modelName]; ok {
+			allTests = append(allTests, tests...)
+		}
+	}
+
+	if len(allTests) == 0 {
+		if jsonOutput {
+			_ = json.NewEncoder(os.Stdout).Encode([]TestResult{})
+		} else {
+			fmt.Printf("%s %s\n",
+				warningStyle.Render("No results found for model:"),
+				modelNameStyle.Render(modelName))
+		}
+		return
+	}
+
+	sort.Slice(allTests, func(i, j int) bool {
+		return allTests[i].Timestamp.After(allTests[j].Timestamp)
+	})
+
+	if jsonOutput {
+		_ = json.NewEncoder(os.Stdout).Encode(allTests)
+		return
+	}
+
+	fmt.Printf("\n%s\n",
+		titleStyle.Render(fmt.Sprintf("📊 Comparing %s", modelName)))
+	fmt.Println(separatorStyle.Render(strings.Repeat("═", 110)))
+	fmt.Printf("%s %s %s %s %s %s\n",
+		headerStyle.Render(fmt.Sprintf("%10s", "CONTEXT")),
+		headerStyle.Render(fmt.Sprintf("%14s", "TOKENS/SEC")),
+		headerStyle.Render(fmt.Sprintf("%14s", "PROMPT TPS")),
+		headerStyle.Render(fmt.Sprintf("%12s", "TTFT")),
+		headerStyle.Render(fmt.Sprintf("%12s", "SERVER")),
+		headerStyle.Render(fmt.Sprintf("%18s", "TESTED")))
+	fmt.Println(separatorStyle.Render(strings.Repeat("═", 110)))
+
+	for _, r := range allTests {
+		ctxLabel := fmt.Sprintf("%dk", r.Context/1024)
+		fmt.Printf("%s %s %s %s %s %s\n",
+			ctxStyle.Render(fmt.Sprintf("%10s", ctxLabel)),
+			metricStyle.Render(fmt.Sprintf("%14.2f", r.TPS)),
+			infoStyle.Render(fmt.Sprintf("%14.2f", r.PromptEvalTPS)),
+			metricStyle.Render(fmt.Sprintf("%12s", formatDuration(r.TTFT))),
+			infoStyle.Render(fmt.Sprintf("%12s", resultServerLabel(r))),
+			infoStyle.Render(fmt.Sprintf("%18s", r.Timestamp.Format("2006-01-02 15:04"))))
+	}
+
+	if len(allTests) > 1 {
+		var sum, minTPS, maxTPS float64
+		minTPS = allTests[0].TPS
+		for _, t := range allTests {
+			sum += t.TPS
+			if t.TPS < minTPS {
+				minTPS = t.TPS
+			}
+			if t.TPS > maxTPS {
+				maxTPS = t.TPS
+			}
+		}
+		avg := sum / float64(len(allTests))
+		fmt.Println(separatorStyle.Render(strings.Repeat("─", 110)))
+		fmt.Printf("%s %s %s %s\n",
+			infoStyle.Render(fmt.Sprintf("%10s", "STATS")),
+			metricStyle.Render(fmt.Sprintf("avg: %.2f", avg)),
+			metricStyle.Render(fmt.Sprintf("min: %.2f", minTPS)),
+			metricStyle.Render(fmt.Sprintf("max: %.2f", maxTPS)))
+	}
+}
+
 func dashboardCmd() {
+	jsonOutput := hasJSONFlag()
 	const (
 		modelColWidth  = 28
 		serverColWidth = 24
@@ -378,6 +462,11 @@ func dashboardCmd() {
 			}
 		}
 		latest = filtered
+	}
+
+	if jsonOutput {
+		_ = json.NewEncoder(os.Stdout).Encode(latest)
+		return
 	}
 
 	models := fetchModels()
@@ -1772,7 +1861,15 @@ if(document.readyState==='loading'){
 func doctorCmd() {
 	passed := 0
 	warnings := 0
-	errors := 0
+	configErrors := 0
+	connectivityErrors := 0
+	permissionErrors := 0
+	dataErrors := 0
+	
+	// Category tracking for exit codes
+	// 0 = all pass, 1 = warnings only
+	// 2 = config errors, 3 = connectivity errors
+	// 4 = permission errors, 5 = data errors
 
 	fmt.Printf("\n%s\n", titleStyle.Render("🏥  Doctor"))
 	fmt.Println(separatorStyle.Render(strings.Repeat("═", 50)))
@@ -1795,10 +1892,10 @@ func doctorCmd() {
 		data, err := os.ReadFile(configPath)
 		if err != nil {
 			fmt.Printf("%s  Config readable: %v\n", errorStyle.Render("❌"), err)
-			errors++
+			configErrors++
 		} else if err := json.Unmarshal(data, &cfg); err != nil {
 			fmt.Printf("%s  Config parseable: %v\n", errorStyle.Render("❌"), err)
-			errors++
+			configErrors++
 		} else {
 			fmt.Printf("%s  Config parseable\n", successStyle.Render("✅"))
 			passed++
@@ -1808,7 +1905,7 @@ func doctorCmd() {
 	// 3. At least one profile configured
 	if len(cfg.Profiles) == 0 {
 		fmt.Printf("%s  At least one profile configured\n", errorStyle.Render("❌"))
-		errors++
+		configErrors++
 	} else {
 		fmt.Printf("%s  Profiles configured (%d)\n", successStyle.Render("✅"), len(cfg.Profiles))
 		passed++
@@ -1824,7 +1921,7 @@ func doctorCmd() {
 	}
 	if !activeValid {
 		fmt.Printf("%s  Active profile valid\n", errorStyle.Render("❌"))
-		errors++
+		configErrors++
 	} else {
 		fmt.Printf("%s  Active profile valid (%s)\n", successStyle.Render("✅"), cfg.ActiveProfile)
 		passed++
@@ -1840,7 +1937,7 @@ func doctorCmd() {
 	}
 	if profile == nil {
 		fmt.Printf("%s  Server reachable\n", errorStyle.Render("❌"))
-		errors++
+		connectivityErrors++
 	} else {
 		client := &http.Client{Timeout: 10 * time.Second}
 		var url string
@@ -1852,7 +1949,7 @@ func doctorCmd() {
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			fmt.Printf("%s  Server reachable\n", errorStyle.Render("❌"))
-			errors++
+			connectivityErrors++
 		} else {
 			if profile.Token != "" {
 				req.Header.Set("Authorization", "Bearer "+profile.Token)
@@ -1871,7 +1968,7 @@ func doctorCmd() {
 			}
 			if err != nil {
 				fmt.Printf("%s  Server reachable: %v\n", errorStyle.Render("❌"), err)
-				errors++
+				connectivityErrors++
 			} else {
 				_ = resp.Body.Close()
 				if resp.StatusCode == http.StatusOK {
@@ -1879,7 +1976,7 @@ func doctorCmd() {
 					passed++
 				} else if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 					fmt.Printf("%s  Server reachable: %d\n", errorStyle.Render("❌"), resp.StatusCode)
-					errors++
+					connectivityErrors++
 				} else {
 					fmt.Printf("%s  Server reachable: status %d\n", warningStyle.Render("⚠️"), resp.StatusCode)
 					warnings++
@@ -1900,18 +1997,18 @@ func doctorCmd() {
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			fmt.Printf("%s  Auth valid\n", errorStyle.Render("❌"))
-			errors++
+			connectivityErrors++
 		} else {
 			req.Header.Set("Authorization", "Bearer "+profile.Token)
 			resp, err := client.Do(req)
 			if err != nil {
 				fmt.Printf("%s  Auth valid: %v\n", errorStyle.Render("❌"), err)
-				errors++
+				connectivityErrors++
 			} else {
 				_ = resp.Body.Close()
 				if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 					fmt.Printf("%s  Auth valid: %d\n", errorStyle.Render("❌"), resp.StatusCode)
-					errors++
+					connectivityErrors++
 				} else {
 					fmt.Printf("%s  Auth valid\n", successStyle.Render("✅"))
 					passed++
@@ -1928,7 +2025,7 @@ func doctorCmd() {
 	tmpFile, err := os.CreateTemp(configDir, "doctor-write-test-*")
 	if err != nil {
 		fmt.Printf("%s  Config dir writable: %v\n", errorStyle.Render("❌"), err)
-		errors++
+		permissionErrors++
 	} else {
 		_ = tmpFile.Close()
 		_ = os.Remove(tmpFile.Name())
@@ -1942,7 +2039,7 @@ func doctorCmd() {
 	tmpFile, err = os.CreateTemp(resultsDir, "doctor-write-test-*")
 	if err != nil {
 		fmt.Printf("%s  Results dir writable: %v\n", errorStyle.Render("❌"), err)
-		errors++
+		permissionErrors++
 	} else {
 		_ = tmpFile.Close()
 		_ = os.Remove(tmpFile.Name())
@@ -1959,12 +2056,12 @@ func doctorCmd() {
 		data, err := os.ReadFile(resultsPath)
 		if err != nil {
 			fmt.Printf("%s  Results file readable: %v\n", errorStyle.Render("❌"), err)
-			errors++
+			dataErrors++
 		} else {
 			var nestedResults map[string]map[string][]TestResult
 			if err := json.Unmarshal(data, &nestedResults); err != nil {
 				fmt.Printf("%s  Results file healthy: %v\n", errorStyle.Render("❌"), err)
-				errors++
+				dataErrors++
 			} else {
 				fmt.Printf("%s  Results file healthy\n", successStyle.Render("✅"))
 				passed++
@@ -1972,14 +2069,269 @@ func doctorCmd() {
 		}
 	}
 
+	totalErrors := configErrors + connectivityErrors + permissionErrors + dataErrors
 	fmt.Println(separatorStyle.Render(strings.Repeat("═", 50)))
 	fmt.Printf("🏥  %s passed, %s warnings, %s errors\n",
 		successStyle.Render(fmt.Sprintf("%d", passed)),
 		warningStyle.Render(fmt.Sprintf("%d", warnings)),
-		errorStyle.Render(fmt.Sprintf("%d", errors)))
+		errorStyle.Render(fmt.Sprintf("%d", totalErrors)))
 	fmt.Println()
 
-	if errors > 0 {
+	// Determine exit code based on error categories
+	if totalErrors == 0 {
+		if warnings > 0 {
+			os.Exit(1) // Warnings only
+		}
+		return // Success (0)
+	}
+	
+	// Return highest priority error category
+	switch {
+	case dataErrors > 0:
+		os.Exit(5)
+	case permissionErrors > 0:
+		os.Exit(4)
+	case connectivityErrors > 0:
+		os.Exit(3)
+	case configErrors > 0:
+		os.Exit(2)
+	}
+}
+func completionsCmd() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: lmspeedtest completions [bash|zsh|fish]")
+		fmt.Println()
+		fmt.Println("Generate shell completion scripts.")
+		fmt.Println()
+		fmt.Println("Examples:")
+		fmt.Println("  lmspeedtest completions bash > /usr/local/etc/bash_completion.d/lmspeedtest")
+		fmt.Println("  lmspeedtest completions zsh > /usr/local/share/zsh/site-functions/_lmspeedtest")
+		fmt.Println("  lmspeedtest completions fish > ~/.config/fish/completions/lmspeedtest.fish")
+		return
+	}
+
+	shell := os.Args[2]
+	switch shell {
+	case "bash":
+		fmt.Println(bashCompletionScript)
+	case "zsh":
+		fmt.Println(zshCompletionScript)
+	case "fish":
+		fmt.Println(fishCompletionScript)
+	default:
+		fmt.Printf("Unknown shell: %s\n", shell)
+		fmt.Println("Supported shells: bash, zsh, fish")
 		os.Exit(1)
 	}
+}
+
+const bashCompletionScript = `# bash completion for lmspeedtest
+_lmspeedtest() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    opts="connect models test dashboard export compare info reset serve doctor completions update --version -v"
+
+    case "${prev}" in
+        connect)
+            opts="--add --list --default --use --remove"
+            ;;
+        test)
+            opts="--all --epochs --template --prompt-file"
+            ;;
+        export)
+            opts="--format"
+            ;;
+        serve)
+            opts="--port"
+            ;;
+        completions)
+            opts="bash zsh fish"
+            ;;
+        --format)
+            opts="csv json benchstat markdown"
+            ;;
+        --template)
+            opts="code chat long"
+            ;;
+        --epochs|--port|--add|--default|--use|--remove)
+            opts=""
+            ;;
+    esac
+
+    COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+    return 0
+}
+complete -F _lmspeedtest lmspeedtest`
+
+const zshCompletionScript = `#compdef lmspeedtest
+
+_lmspeedtest() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \\
+        '1: :->command' \\
+        '*: :->args' && ret=0
+
+    case "$state" in
+        command)
+            _values 'commands' \\
+                'connect[Configure server profile]' \\
+                'models[List local models]' \\
+                'test[Benchmark models]' \\
+                'dashboard[Show benchmark results]' \\
+                'export[Export results]' \\
+                'compare[Compare context sizes]' \\
+                'info[Show server info]' \\
+                'reset[Clear results]' \\
+                'serve[Start web dashboard]' \\
+                'doctor[Run diagnostics]' \\
+                'completions[Generate shell completions]' \\
+                'update[Check for updates]'
+            ;;
+        args)
+            case "$line[1]" in
+                connect)
+                    _arguments \\
+                        '--add[Add a new profile]' \\
+                        '--list[List profiles]' \\
+                        '--default[Set default profile]' \\
+                        '--use[Switch profile]' \\
+                        '--remove[Remove profile]'
+                    ;;
+                test)
+                    _arguments \\
+                        '--all[Benchmark all models]' \\
+                        '--epochs[Number of epochs]' \\
+                        '--template[Prompt template]' \\
+                        '--prompt-file[Custom prompt file]'
+                    ;;
+                export)
+                    _arguments '--format[Export format]:(csv json benchstat markdown)'
+                    ;;
+                serve)
+                    _arguments '--port[Port number]'
+                    ;;
+                completions)
+                    _arguments '2: :(bash zsh fish)'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+compdef _lmspeedtest lmspeedtest`
+
+const fishCompletionScript = `complete -c lmspeedtest -f
+
+# Commands
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'connect' -d 'Configure server profile'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'models' -d 'List local models'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'test' -d 'Benchmark models'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'dashboard' -d 'Show benchmark results'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'export' -d 'Export results'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'compare' -d 'Compare context sizes'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'info' -d 'Show server info'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'reset' -d 'Clear results'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'serve' -d 'Start web dashboard'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'doctor' -d 'Run diagnostics'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'completions' -d 'Generate shell completions'
+complete -c lmspeedtest -n '__fish_use_subcommand' -a 'update' -d 'Check for updates'
+
+# Command-specific options
+complete -c lmspeedtest -n '__fish_seen_subcommand_from connect' -l add -d 'Add a new profile'
+complete -c lmspeedtest -n '__fish_seen_subcommand_from connect' -l list -d 'List profiles'
+complete -c lmspeedtest -n '__fish_seen_subcommand_from connect' -l default -d 'Set default profile'
+complete -c lmspeedtest -n '__fish_seen_subcommand_from connect' -l use -d 'Switch profile'
+complete -c lmspeedtest -n '__fish_seen_subcommand_from connect' -l remove -d 'Remove profile'
+
+complete -c lmspeedtest -n '__fish_seen_subcommand_from test' -l all -d 'Benchmark all models'
+complete -c lmspeedtest -n '__fish_seen_subcommand_from test' -l epochs -d 'Number of epochs'
+complete -c lmspeedtest -n '__fish_seen_subcommand_from test' -l template -d 'Prompt template'
+complete -c lmspeedtest -n '__fish_seen_subcommand_from test' -l prompt-file -d 'Custom prompt file'
+
+complete -c lmspeedtest -n '__fish_seen_subcommand_from export' -l format -a 'csv json benchstat markdown' -d 'Export format'
+complete -c lmspeedtest -n '__fish_seen_subcommand_from serve' -l port -d 'Port number'
+complete -c lmspeedtest -n '__fish_seen_subcommand_from completions' -a 'bash zsh fish' -d 'Shell type'`
+
+func updateCmd() {
+	fmt.Println("Checking for updates...")
+	fmt.Println()
+
+	resp, err := http.Get("https://api.github.com/repos/notfixingit3/lmspeedtest/releases/latest")
+	if err != nil {
+		printError("Cannot check for updates", err)
+		return
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		printError(fmt.Sprintf("GitHub API returned status %d", resp.StatusCode), nil)
+		return
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+		Name    string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		printError("Cannot decode release info", err)
+		return
+	}
+
+	fmt.Printf("Current version: %s\n", version)
+	fmt.Printf("Latest version:  %s\n", release.TagName)
+	fmt.Println()
+
+	if isUpdateAvailable(version, release.TagName) {
+		fmt.Println(successStyle.Render("✅ A new version is available!"))
+		fmt.Println()
+		fmt.Printf("Release: %s\n", release.Name)
+		fmt.Printf("URL:     %s\n", release.HTMLURL)
+		fmt.Println()
+		fmt.Println("To update, run:")
+		fmt.Printf("  go install github.com/notfixingit3/lmspeedtest@%s\n", release.TagName)
+		fmt.Println()
+		fmt.Println("Or download from the releases page:")
+		fmt.Printf("  %s\n", release.HTMLURL)
+	} else {
+		fmt.Println(successStyle.Render("✅ You are on the latest version."))
+	}
+}
+
+func cleanVersion(v string) string {
+	return strings.TrimPrefix(v, "v")
+}
+
+func isUpdateAvailable(current, latest string) bool {
+	current = cleanVersion(current)
+	latest = cleanVersion(latest)
+
+	// Strip -dev suffix for comparison
+	current = strings.Split(current, "-")[0]
+
+	parts := strings.Split(current, ".")
+	latestParts := strings.Split(latest, ".")
+
+	for i := 0; i < 3; i++ {
+		var c, l int
+		if i < len(parts) {
+			c, _ = strconv.Atoi(parts[i])
+		}
+		if i < len(latestParts) {
+			l, _ = strconv.Atoi(latestParts[i])
+		}
+		if l > c {
+			return true
+		}
+		if l < c {
+			return false
+		}
+	}
+	return false
 }

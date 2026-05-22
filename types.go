@@ -5,8 +5,13 @@ import (
 )
 
 const (
-	version   = "0.3.7"
 	configDir = ".lmspeedtest"
+)
+
+var (
+	version = "0.3.8-dev"
+	commit  = "unknown"
+	date    = "unknown"
 )
 
 type ServerProfile struct {

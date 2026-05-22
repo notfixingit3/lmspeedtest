@@ -71,6 +71,7 @@ func fetchModels() []Model {
 }
 
 func modelsCmd() {
+	jsonOutput := hasJSONFlag()
 	maxGB := 0.0
 	nameFilter := ""
 	if len(os.Args) > 2 {
@@ -87,7 +88,28 @@ func modelsCmd() {
 
 	allModels := fetchModels()
 	if len(allModels) == 0 {
-		fmt.Println(warningStyle.Render("No local models found."))
+		if jsonOutput {
+			_ = json.NewEncoder(os.Stdout).Encode([]Model{})
+		} else {
+			fmt.Println(warningStyle.Render("No local models found."))
+		}
+		return
+	}
+
+	var filtered []Model
+	for _, m := range allModels {
+		gb := float64(m.Size) / (1024 * 1024 * 1024)
+		if maxGB > 0 && gb > maxGB {
+			continue
+		}
+		if nameFilter != "" && !strings.Contains(strings.ToLower(m.Name), nameFilter) {
+			continue
+		}
+		filtered = append(filtered, m)
+	}
+
+	if jsonOutput {
+		_ = json.NewEncoder(os.Stdout).Encode(filtered)
 		return
 	}
 
@@ -101,15 +123,8 @@ func modelsCmd() {
 		headerStyle.Render(fmt.Sprintf("%18s", "QUANT")))
 	fmt.Println(separatorStyle.Render(strings.Repeat("─", 120)))
 
-	displayed := 0
-	for _, m := range allModels {
+	for _, m := range filtered {
 		gb := float64(m.Size) / (1024 * 1024 * 1024)
-		if maxGB > 0 && gb > maxGB {
-			continue
-		}
-		if nameFilter != "" && !strings.Contains(strings.ToLower(m.Name), nameFilter) {
-			continue
-		}
 		params := m.Details.ParameterSize
 		if params == "" {
 			params = "-"
@@ -123,22 +138,21 @@ func modelsCmd() {
 			metricStyle.Render(fmt.Sprintf("%8.1f", gb)),
 			infoStyle.Render(fmt.Sprintf("%12s", params)),
 			infoStyle.Render(fmt.Sprintf("%18s", quant)))
-		displayed++
 	}
 
 	fmt.Println(separatorStyle.Render(strings.Repeat("─", 120)))
 	switch {
 	case maxGB > 0 && nameFilter != "":
 		fmt.Printf("%s %s\n",
-			infoStyle.Render(fmt.Sprintf("Showing %d of %d local models", displayed, len(allModels))),
+			infoStyle.Render(fmt.Sprintf("Showing %d of %d local models", len(filtered), len(allModels))),
 			infoStyle.Render(fmt.Sprintf("(≤ %.1f GB, matching '%s')", maxGB, nameFilter)))
 	case maxGB > 0:
 		fmt.Printf("%s %s\n",
-			infoStyle.Render(fmt.Sprintf("Showing %d of %d local models", displayed, len(allModels))),
+			infoStyle.Render(fmt.Sprintf("Showing %d of %d local models", len(filtered), len(allModels))),
 			infoStyle.Render(fmt.Sprintf("(≤ %.1f GB)", maxGB)))
 	case nameFilter != "":
 		fmt.Printf("%s %s\n",
-			infoStyle.Render(fmt.Sprintf("Showing %d of %d local models", displayed, len(allModels))),
+			infoStyle.Render(fmt.Sprintf("Showing %d of %d local models", len(filtered), len(allModels))),
 			infoStyle.Render(fmt.Sprintf("(matching '%s')", nameFilter)))
 	default:
 		fmt.Println(infoStyle.Render(fmt.Sprintf("Total local models: %d", len(allModels))))
@@ -713,4 +727,14 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// hasJSONFlag checks if --json is present in os.Args
+func hasJSONFlag() bool {
+	for _, arg := range os.Args {
+		if arg == "--json" {
+			return true
+		}
+	}
+	return false
 }

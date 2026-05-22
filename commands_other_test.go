@@ -1,10 +1,25 @@
 package main
 
 import (
+	"bytes"
+	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+func captureOutput(f func()) string {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	f()
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return buf.String()
+}
 
 func TestResultServerLabel(t *testing.T) {
 	origConfig := config
@@ -316,6 +331,88 @@ func TestLatestPerModel(t *testing.T) {
 				}
 				if got[0].TPS != tt.expectedTPS {
 					t.Errorf("latestPerModel()[0].TPS = %v, want %v", got[0].TPS, tt.expectedTPS)
+				}
+			}
+		})
+	}
+}
+
+func TestPrintVersion(t *testing.T) {
+	output := captureOutput(printVersion)
+	if !strings.Contains(output, "LMSpeedTest") {
+		t.Errorf("output missing 'LMSpeedTest', got:\n%s", output)
+	}
+	if !strings.Contains(output, "commit:") {
+		t.Errorf("output missing 'commit:', got:\n%s", output)
+	}
+	if !strings.Contains(output, "built:") {
+		t.Errorf("output missing 'built:', got:\n%s", output)
+	}
+	if !strings.Contains(output, "go:") {
+		t.Errorf("output missing 'go:', got:\n%s", output)
+	}
+}
+
+func TestIsUpdateAvailable(t *testing.T) {
+	tests := []struct {
+		name    string
+		current string
+		latest  string
+		want    bool
+	}{
+		{"older patch", "0.3.7", "v0.3.8", true},
+		{"newer patch", "0.3.8", "v0.3.7", false},
+		{"dev same version", "0.3.8-dev", "v0.3.8", false},
+		{"same version", "0.3.7", "v0.3.7", false},
+		{"dev newer", "0.3.8-dev", "v0.3.7", false},
+		{"older minor", "0.3.7", "v0.4.0", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isUpdateAvailable(tt.current, tt.latest)
+			if got != tt.want {
+				t.Errorf("isUpdateAvailable(%q, %q) = %v, want %v", tt.current, tt.latest, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCompletionsCmd(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		wantContains []string
+	}{
+		{
+			name:         "bash",
+			args:         []string{"lmspeedtest", "completions", "bash"},
+			wantContains: []string{"_lmspeedtest()", "complete -F"},
+		},
+		{
+			name:         "zsh",
+			args:         []string{"lmspeedtest", "completions", "zsh"},
+			wantContains: []string{"#compdef lmspeedtest", "_lmspeedtest()"},
+		},
+		{
+			name:         "fish",
+			args:         []string{"lmspeedtest", "completions", "fish"},
+			wantContains: []string{"complete -c lmspeedtest"},
+		},
+		{
+			name:         "no args shows usage",
+			args:         []string{"lmspeedtest", "completions"},
+			wantContains: []string{"Usage: lmspeedtest completions"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origArgs := os.Args
+			os.Args = tt.args
+			defer func() { os.Args = origArgs }()
+			output := captureOutput(completionsCmd)
+			for _, want := range tt.wantContains {
+				if !strings.Contains(output, want) {
+					t.Errorf("output missing %q, got:\n%s", want, output)
 				}
 			}
 		})

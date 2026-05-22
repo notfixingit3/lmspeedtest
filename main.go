@@ -3,11 +3,17 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 )
 
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
+		return
+	}
+
+	if os.Args[1] == "--version" || os.Args[1] == "version" {
+		printVersion()
 		return
 	}
 
@@ -35,9 +41,21 @@ func main() {
 		serveCmd()
 	case "doctor":
 		doctorCmd()
+	case "completions":
+		completionsCmd()
+	case "update":
+		updateCmd()
 	default:
 		printUsage()
 	}
+}
+
+func printVersion() {
+	fmt.Printf("LMSpeedTest %s\n", version)
+	fmt.Printf("  commit: %s\n", commit)
+	fmt.Printf("  built:  %s\n", date)
+	fmt.Printf("  go:     %s\n", runtime.Version())
+	fmt.Printf("  os:     %s/%s\n", runtime.GOOS, runtime.GOARCH)
 }
 
 func printUsage() {
@@ -60,6 +78,8 @@ func printUsage() {
 		{"compare <model_name>", "Compare all context sizes for a model"},
 		{"export [--format fmt]", "Export results: csv, json, benchstat, or markdown"},
 		{"doctor", "Run diagnostics: check config, connectivity, and permissions"},
+		{"completions [shell]", "Generate shell completion scripts (bash, zsh, fish)"},
+		{"update", "Check for updates"},
 		{"reset", "Clear all benchmark results"},
 		{"serve [--port N]", "Start web dashboard (default: 8080)"},
 	}

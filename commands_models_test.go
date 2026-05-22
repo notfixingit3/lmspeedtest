@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 )
 
@@ -165,6 +166,29 @@ func TestTruncateStringTableDriven(t *testing.T) {
 			got := truncateString(tt.input, tt.maxLen)
 			if got != tt.want {
 				t.Errorf("truncateString(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasJSONFlag(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"no json flag", []string{"lmspeedtest", "models", "8"}, false},
+		{"--json present", []string{"lmspeedtest", "models", "--json"}, true},
+		{"--json at start", []string{"lmspeedtest", "--json", "models"}, true},
+		{"--json only arg", []string{"lmspeedtest", "--json"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origArgs := os.Args
+			os.Args = tt.args
+			defer func() { os.Args = origArgs }()
+			if got := hasJSONFlag(); got != tt.want {
+				t.Errorf("hasJSONFlag() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -49,6 +49,9 @@
 - 🔐 **Auth Support** — Bearer token authentication for remote Ollama/LM Studio instances
 - 🖥️ **Remote-Friendly** — Works with local or remote Ollama/LM Studio servers
 - 🏢 **Multi-Server Support** — Manage and benchmark multiple Ollama/LM Studio servers
+- 🔍 **Update Checker** — Check for new versions with a single command
+- 🐚 **Shell Completions** — Bash, Zsh, and Fish completion scripts out of the box
+- 📋 **JSON Output** — Machine-readable output for models, dashboard, info, and compare commands
 
 ---
 
@@ -141,9 +144,12 @@ chmod +x lmspeedtest
 | `test <max_gb> [opts]` | Benchmark matching models |
 | `dashboard` | Show latest results per model |
 | `compare <model>` | Compare all context sizes for a model |
+| `completions [shell]` | Generate shell completion scripts (bash, zsh, fish) |
 | `export [--format fmt]` | Export results (csv, json, benchstat, markdown) |
 | `reset` | Clear all benchmark results |
 | `serve [--port N]` | Start web dashboard (default: 8080) |
+| `update` | Check for available updates |
+| `--version` | Show version information |
 
 ### Test Options
 
@@ -159,6 +165,19 @@ chmod +x lmspeedtest
 ./lmspeedtest test 8 --template long    # Long-form writing (default)
 ./lmspeedtest test 8 --prompt-file path.txt  # Custom prompt from file
 ```
+
+### Doctor Exit Codes
+
+The `doctor` command returns specific exit codes for programmatic use:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Pass — all checks OK |
+| `1` | Warnings — potential issues detected |
+| `2` | Config errors — invalid or missing configuration |
+| `3` | Connectivity — cannot reach Ollama/LM Studio |
+| `4` | Permissions — file or directory permission issues |
+| `5` | Data errors — corrupted or unreadable results data |
 
 ### Real-World Examples
 
@@ -194,6 +213,23 @@ benchstat results.bench
 # Host: https://ollama.example.com or http://10.1.6.30:1234
 # Token: sk-abc123
 ./lmspeedtest info
+
+# Check for updates
+./lmspeedtest update
+
+# Generate shell completions
+./lmspeedtest completions bash > /usr/local/etc/bash_completion.d/lmspeedtest
+./lmspeedtest completions zsh > /usr/local/share/zsh/site-functions/_lmspeedtest
+./lmspeedtest completions fish > ~/.config/fish/completions/lmspeedtest.fish
+
+# Get JSON output for scripting
+./lmspeedtest models --json
+./lmspeedtest dashboard --json
+./lmspeedtest info --json
+./lmspeedtest compare llama3.2:latest --json
+
+# Check version
+./lmspeedtest --version
 
 # Multi-server: add and switch between servers
 ./lmspeedtest connect --add desktop --host http://192.168.1.10:11434
