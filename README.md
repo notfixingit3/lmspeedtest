@@ -80,6 +80,7 @@ go install github.com/notfixingit3/lmspeedtest@latest
 git clone https://github.com/notfixingit3/lmspeedtest.git
 cd lmspeedtest
 go build -o lmspeedtest
+chmod +x lmspeedtest
 ```
 
 ---
