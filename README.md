@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/go-1.25.8-blue?style=for-the-badge&logo=go" alt="Go Version">
-  <img src="https://github.com/notfixingit3/lmspeedtest/actions/workflows/security.yml/badge.svg?branch=main" alt="gosec">
+  <img src="https://github.com/notfixingit3/lmspeedtest/actions/workflows/security.yml/badge.svg?branch=main" alt="gosec" style="height: 28px;">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <a href="https://www.buymeacoffee.com/notfixingit">
     <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me A Coffee">
@@ -31,8 +31,7 @@
 </p>
 
 <p align="center">
-  <img src="screenshots/doctor.png" alt="Doctor diagnostics" width="500">&nbsp;&nbsp;
-  <img src="screenshots/info.png" alt="Server info" width="500">
+  <img src="screenshots/doctor.png" alt="Doctor diagnostics" width="500">
 </p>
 
 ## ✨ Features
