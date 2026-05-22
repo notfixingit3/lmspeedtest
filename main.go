@@ -33,6 +33,8 @@ func main() {
 		resetCmd()
 	case "serve":
 		serveCmd()
+	case "doctor":
+		doctorCmd()
 	default:
 		printUsage()
 	}
@@ -56,7 +58,8 @@ func printUsage() {
 		{"test <max_gb> [ctx] [filter] [opts]", "Benchmark models matching criteria"},
 		{"dashboard [name_filter]", "Show latest benchmark results, optionally filtered by name"},
 		{"compare <model_name>", "Compare all context sizes for a model"},
-		{"export [--format fmt]", "Export results: csv, json, or benchstat"},
+		{"export [--format fmt]", "Export results: csv, json, benchstat, or markdown"},
+		{"doctor", "Run diagnostics: check config, connectivity, and permissions"},
 		{"reset", "Clear all benchmark results"},
 		{"serve [--port N]", "Start web dashboard (default: 8080)"},
 	}

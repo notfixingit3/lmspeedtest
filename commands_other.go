@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -23,8 +24,8 @@ func exportCmd() {
 		}
 	}
 
-	if format != "csv" && format != "json" && format != "benchstat" {
-		fmt.Println(errorStyle.Render("Invalid format. Use: csv, json, or benchstat"))
+	if format != "csv" && format != "json" && format != "benchstat" && format != "markdown" {
+		fmt.Println(errorStyle.Render("Invalid format. Use: csv, json, benchstat, or markdown"))
 		return
 	}
 
@@ -82,6 +83,29 @@ func exportCmd() {
 				r.Context/1024,
 				nsPerToken,
 				r.TPS)
+		}
+	case "markdown":
+		fmt.Println("| Model | Server | Context | Tokens/sec | Prompt TPS | TTFT | ITL | Tested |")
+		fmt.Println("|-------|--------|---------|------------|------------|------|-----|--------|")
+		for _, r := range allResults {
+			ctxLabel := fmt.Sprintf("%dk", r.Context/1024)
+			ttftStr := "-"
+			if r.TTFT > 0 {
+				ttftStr = r.TTFT.String()
+			}
+			itlStr := "-"
+			if r.ITL > 0 {
+				itlStr = r.ITL.String()
+			}
+			fmt.Printf("| %s | %s | %s | %.2f | %.2f | %s | %s | %s |\n",
+				r.Model,
+				resultServerLabel(r),
+				ctxLabel,
+				r.TPS,
+				r.PromptEvalTPS,
+				ttftStr,
+				itlStr,
+				r.Timestamp.Format("2006-01-02 15:04"))
 		}
 	}
 }
@@ -1742,5 +1766,220 @@ if(document.readyState==='loading'){
 	}
 	if err := server.ListenAndServe(); err != nil {
 		printError("Server error", err)
+	}
+}
+
+func doctorCmd() {
+	passed := 0
+	warnings := 0
+	errors := 0
+
+	fmt.Printf("\n%s\n", titleStyle.Render("🏥  Doctor"))
+	fmt.Println(separatorStyle.Render(strings.Repeat("═", 50)))
+
+	configPath := getConfigPath()
+	_, err := os.Stat(configPath)
+	if err != nil {
+		fmt.Printf("%s  Config file missing (fresh install)\n", warningStyle.Render("⚠️"))
+		warnings++
+	} else {
+		fmt.Printf("%s  Config file exists\n", successStyle.Render("✅"))
+		passed++
+	}
+
+	var cfg Config
+	if err != nil {
+		fmt.Printf("%s  Config parseable\n", warningStyle.Render("⚠️"))
+		warnings++
+	} else {
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			fmt.Printf("%s  Config readable: %v\n", errorStyle.Render("❌"), err)
+			errors++
+		} else if err := json.Unmarshal(data, &cfg); err != nil {
+			fmt.Printf("%s  Config parseable: %v\n", errorStyle.Render("❌"), err)
+			errors++
+		} else {
+			fmt.Printf("%s  Config parseable\n", successStyle.Render("✅"))
+			passed++
+		}
+	}
+
+	// 3. At least one profile configured
+	if len(cfg.Profiles) == 0 {
+		fmt.Printf("%s  At least one profile configured\n", errorStyle.Render("❌"))
+		errors++
+	} else {
+		fmt.Printf("%s  Profiles configured (%d)\n", successStyle.Render("✅"), len(cfg.Profiles))
+		passed++
+	}
+
+	// 4. Active profile is valid
+	activeValid := false
+	for _, p := range cfg.Profiles {
+		if p.Name == cfg.ActiveProfile {
+			activeValid = true
+			break
+		}
+	}
+	if !activeValid {
+		fmt.Printf("%s  Active profile valid\n", errorStyle.Render("❌"))
+		errors++
+	} else {
+		fmt.Printf("%s  Active profile valid (%s)\n", successStyle.Render("✅"), cfg.ActiveProfile)
+		passed++
+	}
+
+	// 5. Server reachable
+	var profile *ServerProfile
+	for i := range cfg.Profiles {
+		if cfg.Profiles[i].Name == cfg.ActiveProfile {
+			profile = &cfg.Profiles[i]
+			break
+		}
+	}
+	if profile == nil {
+		fmt.Printf("%s  Server reachable\n", errorStyle.Render("❌"))
+		errors++
+	} else {
+		client := &http.Client{Timeout: 10 * time.Second}
+		var url string
+		if profile.Provider == "lmstudio" {
+			url = profile.Host + "/api/v1/models"
+		} else {
+			url = profile.Host + "/api/version"
+		}
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			fmt.Printf("%s  Server reachable\n", errorStyle.Render("❌"))
+			errors++
+		} else {
+			if profile.Token != "" {
+				req.Header.Set("Authorization", "Bearer "+profile.Token)
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				if profile.Provider == "lmstudio" {
+					req, err = http.NewRequest(http.MethodGet, profile.Host+"/v1/models", nil)
+					if err == nil {
+						if profile.Token != "" {
+							req.Header.Set("Authorization", "Bearer "+profile.Token)
+						}
+						resp, err = client.Do(req)
+					}
+				}
+			}
+			if err != nil {
+				fmt.Printf("%s  Server reachable: %v\n", errorStyle.Render("❌"), err)
+				errors++
+			} else {
+				_ = resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					fmt.Printf("%s  Server reachable (%s)\n", successStyle.Render("✅"), profile.Host)
+					passed++
+				} else if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+					fmt.Printf("%s  Server reachable: %d\n", errorStyle.Render("❌"), resp.StatusCode)
+					errors++
+				} else {
+					fmt.Printf("%s  Server reachable: status %d\n", warningStyle.Render("⚠️"), resp.StatusCode)
+					warnings++
+				}
+			}
+		}
+	}
+
+	// 6. Auth valid
+	if profile != nil && profile.Token != "" {
+		client := &http.Client{Timeout: 10 * time.Second}
+		var url string
+		if profile.Provider == "lmstudio" {
+			url = profile.Host + "/api/v1/models"
+		} else {
+			url = profile.Host + "/api/version"
+		}
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			fmt.Printf("%s  Auth valid\n", errorStyle.Render("❌"))
+			errors++
+		} else {
+			req.Header.Set("Authorization", "Bearer "+profile.Token)
+			resp, err := client.Do(req)
+			if err != nil {
+				fmt.Printf("%s  Auth valid: %v\n", errorStyle.Render("❌"), err)
+				errors++
+			} else {
+				_ = resp.Body.Close()
+				if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+					fmt.Printf("%s  Auth valid: %d\n", errorStyle.Render("❌"), resp.StatusCode)
+					errors++
+				} else {
+					fmt.Printf("%s  Auth valid\n", successStyle.Render("✅"))
+					passed++
+				}
+			}
+		}
+	} else {
+		fmt.Printf("%s  Auth valid (no token)\n", successStyle.Render("✅"))
+		passed++
+	}
+
+	// 7. Config dir writable
+	configDir := filepath.Dir(configPath)
+	tmpFile, err := os.CreateTemp(configDir, "doctor-write-test-*")
+	if err != nil {
+		fmt.Printf("%s  Config dir writable: %v\n", errorStyle.Render("❌"), err)
+		errors++
+	} else {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+		fmt.Printf("%s  Config dir writable\n", successStyle.Render("✅"))
+		passed++
+	}
+
+	// 8. Results dir writable
+	resultsPath := getResultsPath()
+	resultsDir := filepath.Dir(resultsPath)
+	tmpFile, err = os.CreateTemp(resultsDir, "doctor-write-test-*")
+	if err != nil {
+		fmt.Printf("%s  Results dir writable: %v\n", errorStyle.Render("❌"), err)
+		errors++
+	} else {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+		fmt.Printf("%s  Results dir writable\n", successStyle.Render("✅"))
+		passed++
+	}
+
+	// 9. Results file healthy
+	_, err = os.Stat(resultsPath)
+	if err != nil {
+		fmt.Printf("%s  Results file missing (no results yet)\n", warningStyle.Render("⚠️"))
+		warnings++
+	} else {
+		data, err := os.ReadFile(resultsPath)
+		if err != nil {
+			fmt.Printf("%s  Results file readable: %v\n", errorStyle.Render("❌"), err)
+			errors++
+		} else {
+			var nestedResults map[string]map[string][]TestResult
+			if err := json.Unmarshal(data, &nestedResults); err != nil {
+				fmt.Printf("%s  Results file healthy: %v\n", errorStyle.Render("❌"), err)
+				errors++
+			} else {
+				fmt.Printf("%s  Results file healthy\n", successStyle.Render("✅"))
+				passed++
+			}
+		}
+	}
+
+	fmt.Println(separatorStyle.Render(strings.Repeat("═", 50)))
+	fmt.Printf("🏥  %s passed, %s warnings, %s errors\n",
+		successStyle.Render(fmt.Sprintf("%d", passed)),
+		warningStyle.Render(fmt.Sprintf("%d", warnings)),
+		errorStyle.Render(fmt.Sprintf("%d", errors)))
+	fmt.Println()
+
+	if errors > 0 {
+		os.Exit(1)
 	}
 }
