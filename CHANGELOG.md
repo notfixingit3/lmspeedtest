@@ -2,7 +2,7 @@
 
 All notable changes to LMSpeedTest are documented here.
 
-## [0.4.3] - unreleased
+## [0.4.4] - 2026-06-18
 
 ### Added
 - Token count shown in each epoch result line (e.g., `42.3 tokens/sec · 312 tokens`) — gives confidence in the measurement
