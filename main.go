@@ -35,6 +35,8 @@ func main() {
 		compareCmd()
 	case "info":
 		infoCmd()
+	case "prune":
+		pruneCmd()
 	case "reset":
 		resetCmd()
 	case "serve":
@@ -80,6 +82,7 @@ func printUsage() {
 		{"doctor", "Run diagnostics: check config, connectivity, and permissions"},
 		{"completions [shell]", "Generate shell completion scripts (bash, zsh, fish)"},
 		{"update", "Check for updates"},
+		{"prune", "Remove results for models no longer on the active server"},
 		{"reset", "Clear all benchmark results"},
 		{"serve [--port N]", "Start web dashboard (default: 8080)"},
 	}

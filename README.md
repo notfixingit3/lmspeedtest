@@ -41,7 +41,8 @@
 - 📝 **Configurable Prompts** — Code generation, chat, long-form, or custom file-based prompts
 - 📈 **Export Formats** — CSV, JSON, or Go benchstat-compatible output
 - 🔥 **Batch Mode** — Benchmark all matching models without interactive selection
-- 🌡️ **Automatic Warmup** — Every model gets a lightweight warmup run + 1s settling delay before measurement
+- 🌡️ **Automatic Warmup** — Every model gets a lightweight warmup run + 1s settling delay before measurement (Ollama and LM Studio)
+- 📈 **Delta vs Last Run** — Each result shows `▲/▼` change vs the previous stored benchmark for that model
 - 📉 **Stability Analysis** — See variance, min/max across epochs
 - 🧠 **Thinking Mode** — Optional `--think` flag sends `"think": true` to Ollama and LM Studio
 - 🌐 **Web Dashboard** — Serve results over HTTP with `lmspeedtest serve`; chart bars show context size
@@ -145,6 +146,7 @@ chmod +x lmspeedtest
 | `compare <query>` | Compare results — partial name match across all stored models |
 | `completions [shell]` | Generate shell completion scripts (bash, zsh, fish) |
 | `export [--format fmt]` | Export results (csv, json, benchstat, markdown) |
+| `prune` | Remove results for models no longer on the active server |
 | `reset` | Clear all benchmark results |
 | `serve [--port N]` | Start web dashboard (default: 8080) |
 | `update` | Check for available updates |

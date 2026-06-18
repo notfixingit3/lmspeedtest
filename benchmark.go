@@ -38,7 +38,7 @@ func isLMStudioFatalLoadError(details string) bool {
 		strings.Contains(lowerDetails, "failed to load model")
 }
 
-func runSpeedTest(model string, contextSize int, prompt string, think bool) (float64, float64, time.Duration, time.Duration, time.Duration) {
+func runSpeedTest(model string, contextSize int, prompt string, think bool) (float64, float64, time.Duration, time.Duration, time.Duration, int) {
 	profile := activeProfile()
 	if profile.Provider == "lmstudio" {
 		return runLMStudioSpeedTest(model, contextSize, prompt, profile, think)
@@ -58,17 +58,17 @@ func runSpeedTest(model string, contextSize int, prompt string, think bool) (flo
 	data, err := json.Marshal(reqBody)
 	if err != nil {
 		fmt.Println(errorStyle.Render("  Cannot marshal request:") + " " + err.Error())
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 	req, err := newAPIRequest("POST", profile.Host+"/api/generate", strings.NewReader(string(data)))
 	if err != nil {
 		fmt.Println(errorStyle.Render("  Cannot create request:"))
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		fmt.Println(errorStyle.Render(fmt.Sprintf("  Connection error to %s", providerDisplayName(profile.Provider))))
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -146,7 +146,7 @@ func runSpeedTest(model string, contextSize int, prompt string, think bool) (flo
 
 	seconds := time.Since(start).Seconds()
 	if seconds == 0 || evalCount == 0 {
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 	tpsOut := float64(evalCount) / seconds
 
@@ -165,7 +165,7 @@ func runSpeedTest(model string, contextSize int, prompt string, think bool) (flo
 		itl = itlSum / time.Duration(itlCount)
 	}
 
-	return tpsOut, promptEvalTPS, ttft, time.Duration(loadDurationNanos), itl
+	return tpsOut, promptEvalTPS, ttft, time.Duration(loadDurationNanos), itl, evalCount
 }
 
 func formatDuration(d time.Duration) string {
@@ -305,13 +305,13 @@ func unloadLMStudioModels(profile ServerProfile) bool {
 	}
 }
 
-func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile ServerProfile, think bool) (float64, float64, time.Duration, time.Duration, time.Duration) {
+func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile ServerProfile, think bool) (float64, float64, time.Duration, time.Duration, time.Duration, int) {
 	// 0. Unload existing models to free memory
 	if !unloadLMStudioModels(profile) {
 		fmt.Printf("  %s LM Studio still has loaded models; skipping %s to avoid memory pressure.\n",
 			warningStyle.Render("→"),
 			modelNameStyle.Render(model))
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 
 	// 1. Load Model
@@ -341,9 +341,30 @@ func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile 
 				}()
 				if loadResp.StatusCode == http.StatusOK {
 					loadDuration = time.Since(loadStart)
-					fmt.Printf("  %s LM Studio loaded model in %s. Starting benchmark stream...\n",
+					fmt.Printf("  %s LM Studio loaded model in %s. Warming up...\n",
 						infoStyle.Render("→"),
 						formatDuration(loadDuration))
+					warmupBody := map[string]any{
+						"model":       model,
+						"messages":    []map[string]string{{"role": "user", "content": "Hi"}},
+						"temperature": 0.0,
+						"think":       false,
+						"stream":      false,
+					}
+					if warmupData, wErr := json.Marshal(warmupBody); wErr == nil {
+						if warmupReq, wErr := http.NewRequest(http.MethodPost, profile.Host+"/v1/chat/completions", strings.NewReader(string(warmupData))); wErr == nil {
+							if profile.Token != "" {
+								warmupReq.Header.Set("Authorization", "Bearer "+profile.Token)
+							}
+							warmupReq.Header.Set("Content-Type", "application/json")
+							if warmupResp, wErr := http.DefaultClient.Do(warmupReq); wErr == nil {
+								_, _ = io.Copy(io.Discard, warmupResp.Body)
+								_ = warmupResp.Body.Close()
+							}
+						}
+					}
+					time.Sleep(1 * time.Second)
+					fmt.Printf("  %s Starting benchmark stream...\n", infoStyle.Render("→"))
 				} else {
 					details := httpErrorDetails(loadResp)
 					fmt.Printf("\n%s Load returned status %d for %s at %dk context.\n",
@@ -354,7 +375,7 @@ func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile 
 					fmt.Printf("  %s %s\n", warningStyle.Render("Response:"), details)
 					if isLMStudioFatalLoadError(details) {
 						fmt.Printf("  %s LM Studio reported a model load failure; skipping chat request.\n", warningStyle.Render("→"))
-						return 0, 0, 0, 0, 0
+						return 0, 0, 0, 0, 0, 0
 					}
 					fmt.Printf("  %s Proceeding with chat request anyway...\n", warningStyle.Render("→"))
 				}
@@ -385,12 +406,12 @@ func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile 
 	chatData, err := json.Marshal(chatReqBody)
 	if err != nil {
 		fmt.Println(errorStyle.Render("  Cannot marshal chat request:") + " " + err.Error())
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 	req, err := http.NewRequest(http.MethodPost, profile.Host+"/v1/chat/completions", strings.NewReader(string(chatData)))
 	if err != nil {
 		fmt.Println(errorStyle.Render("  Cannot create request:"))
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 	if profile.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+profile.Token)
@@ -400,7 +421,7 @@ func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		fmt.Println(errorStyle.Render("  Connection error to LM Studio"))
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -413,7 +434,7 @@ func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile 
 			modelNameStyle.Render(model),
 			contextSize/1024)
 		fmt.Printf("  %s %s\n", errorStyle.Render("Response:"), httpErrorDetails(resp))
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 
 	start := time.Now()
@@ -515,7 +536,7 @@ func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile 
 
 	seconds := time.Since(start).Seconds()
 	if seconds == 0 {
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 
 	if evalCount == 0 {
@@ -537,5 +558,5 @@ func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile 
 		itl = itlSum / time.Duration(itlCount)
 	}
 
-	return tpsOut, promptEvalTPS, ttft, loadDuration, itl
+	return tpsOut, promptEvalTPS, ttft, loadDuration, itl, evalCount
 }

@@ -552,6 +552,54 @@ func dashboardCmd() {
 		totalTPS/float64(len(latest)))
 }
 
+func pruneCmd() {
+	profile := activeProfile()
+	models := fetchModels()
+	if len(models) == 0 {
+		fmt.Println(warningStyle.Render("No models found on active server — nothing to prune."))
+		return
+	}
+
+	serverData, ok := results[profile.Name]
+	if !ok || len(serverData) == 0 {
+		fmt.Println(infoStyle.Render("No results for active server — nothing to prune."))
+		return
+	}
+
+	current := make(map[string]bool)
+	for _, m := range models {
+		current[m.Name] = true
+	}
+
+	var stale []string
+	for modelName := range serverData {
+		if !current[modelName] {
+			stale = append(stale, modelName)
+		}
+	}
+
+	if len(stale) == 0 {
+		fmt.Printf("%s All stored results match current models on %s.\n",
+			successStyle.Render("✓"),
+			modelNameStyle.Render(profile.Name))
+		return
+	}
+
+	sort.Strings(stale)
+	fmt.Printf("\n%s\n", titleStyle.Render("🧹 Pruning stale results"))
+	fmt.Println(separatorStyle.Render(strings.Repeat("─", 60)))
+	fmt.Printf("Server: %s\n\n", modelNameStyle.Render(profile.Name))
+
+	for _, name := range stale {
+		delete(results[profile.Name], name)
+		fmt.Printf("  %s %s\n", warningStyle.Render("removed"), modelNameStyle.Render(name))
+	}
+
+	saveResults()
+	fmt.Println()
+	fmt.Printf("%s Removed %d stale result(s).\n", successStyle.Render("✅"), len(stale))
+}
+
 func resetCmd() {
 	fmt.Printf("\n%s\n", titleStyle.Render("🗑️  Reset Results"))
 	fmt.Println(separatorStyle.Render(strings.Repeat("─", 50)))

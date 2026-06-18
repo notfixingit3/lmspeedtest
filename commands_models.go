@@ -360,11 +360,16 @@ func testCmd() {
 			infoStyle.Render(template),
 			thinkStr)
 
+		var prevBest float64
+		if sr, ok := results[profile.Name][model]; ok && len(sr) > 0 {
+			prevBest = sr[0].TPS
+		}
+
 		if profile.Provider == "lmstudio" {
-			fmt.Printf("  %s\n", infoStyle.Render("Skipping warmup for LM Studio; measured run will load the model after cleanup."))
+			fmt.Printf("  %s\n", infoStyle.Render("LM Studio: unloading existing models, loading fresh, warming up, then benchmarking."))
 		} else {
 			fmt.Printf("  %s ", infoStyle.Render("Warmup run..."))
-			_, _, _, _, _ = runSpeedTest(model, contextSize, "Hello", false)
+			_, _, _, _, _, _ = runSpeedTest(model, contextSize, "Hello", false)
 			fmt.Println()
 			time.Sleep(1 * time.Second)
 		}
@@ -378,12 +383,13 @@ func testCmd() {
 			if epochs > 1 {
 				fmt.Printf("  %s %d/%d...\n", infoStyle.Render("Epoch"), i+1, epochs)
 			}
-			tps, promptEvalTPS, ttft, loadDuration, itl := runSpeedTest(model, contextSize, prompt, think)
+			tps, promptEvalTPS, ttft, loadDuration, itl, tokens := runSpeedTest(model, contextSize, prompt, think)
 			if tps > 0 {
-				fmt.Printf("\r  %s %.2f %s (TTFT: %s, load: %s, ITL: %s)\n",
+				fmt.Printf("\r  %s %.2f %s · %d tokens (TTFT: %s, load: %s, ITL: %s)\n",
 					infoStyle.Render("→"),
 					tps,
 					metricStyle.Render("tokens/sec"),
+					tokens,
 					formatDuration(ttft),
 					formatDuration(loadDuration),
 					formatDuration(itl))
@@ -443,12 +449,23 @@ func testCmd() {
 				stabilityStr = fmt.Sprintf(" (stability: ±%.1f%%, min: %.2f, max: %.2f)", cv, minTPS, maxTPS)
 			}
 
-			fmt.Printf("%s %s %s %.2f %s%s (avg TTFT: %s, avg load: %s)\n",
+			deltaStr := ""
+			if prevBest > 0 {
+				delta := avgTPS - prevBest
+				if delta >= 0 {
+					deltaStr = " " + successStyle.Render(fmt.Sprintf("▲ +%.2f vs last", delta))
+				} else {
+					deltaStr = " " + errorStyle.Render(fmt.Sprintf("▼ %.2f vs last", delta))
+				}
+			}
+
+			fmt.Printf("%s %s %s %.2f %s%s%s (avg TTFT: %s, avg load: %s)\n",
 				successStyle.Render("✅"),
 				modelNameStyle.Render(model),
 				infoStyle.Render("→"),
 				avgTPS,
 				metricStyle.Render("tokens/sec"),
+				deltaStr,
 				stabilityStr,
 				formatDuration(avgTTFT),
 				formatDuration(avgLoad))

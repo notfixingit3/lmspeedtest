@@ -2,6 +2,16 @@
 
 All notable changes to LMSpeedTest are documented here.
 
+## [0.4.3] - unreleased
+
+### Added
+- Token count shown in each epoch result line (e.g., `42.3 tokens/sec · 312 tokens`) — gives confidence in the measurement
+- Delta vs last run shown in per-model summary (`▲ +3.2 vs last` / `▼ -1.1 vs last`) — immediately see if a config change helped
+- LM Studio now runs a warmup inference after loading the model, before the measured benchmark — results are now comparable to Ollama
+- `prune` command — removes stored results for models no longer present on the active server
+
+---
+
 ## [0.4.1] - 2026-06-17
 
 ### Added
