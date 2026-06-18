@@ -38,10 +38,10 @@ func isLMStudioFatalLoadError(details string) bool {
 		strings.Contains(lowerDetails, "failed to load model")
 }
 
-func runSpeedTest(model string, contextSize int, prompt string) (float64, float64, time.Duration, time.Duration, time.Duration) {
+func runSpeedTest(model string, contextSize int, prompt string, think bool) (float64, float64, time.Duration, time.Duration, time.Duration) {
 	profile := activeProfile()
 	if profile.Provider == "lmstudio" {
-		return runLMStudioSpeedTest(model, contextSize, prompt, profile)
+		return runLMStudioSpeedTest(model, contextSize, prompt, profile, think)
 	}
 
 	reqBody := map[string]any{
@@ -51,7 +51,7 @@ func runSpeedTest(model string, contextSize int, prompt string) (float64, float6
 			"num_ctx":     contextSize,
 			"temperature": 0.0,
 		},
-		"think":  false,
+		"think":  think,
 		"stream": true,
 	}
 
@@ -305,7 +305,7 @@ func unloadLMStudioModels(profile ServerProfile) bool {
 	}
 }
 
-func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile ServerProfile) (float64, float64, time.Duration, time.Duration, time.Duration) {
+func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile ServerProfile, think bool) (float64, float64, time.Duration, time.Duration, time.Duration) {
 	// 0. Unload existing models to free memory
 	if !unloadLMStudioModels(profile) {
 		fmt.Printf("  %s LM Studio still has loaded models; skipping %s to avoid memory pressure.\n",
@@ -375,6 +375,7 @@ func runLMStudioSpeedTest(model string, contextSize int, prompt string, profile 
 			{"role": "user", "content": prompt},
 		},
 		"temperature": 0.0,
+		"think":       think,
 		"stream":      true,
 		"stream_options": map[string]any{
 			"include_usage": true,

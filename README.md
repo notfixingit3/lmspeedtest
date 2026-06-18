@@ -41,9 +41,10 @@
 - 📝 **Configurable Prompts** — Code generation, chat, long-form, or custom file-based prompts
 - 📈 **Export Formats** — CSV, JSON, or Go benchstat-compatible output
 - 🔥 **Batch Mode** — Benchmark all matching models without interactive selection
-- 🌡️ **Automatic Warmup** — Every model gets a lightweight warmup run before measurement
+- 🌡️ **Automatic Warmup** — Every model gets a lightweight warmup run + 1s settling delay before measurement
 - 📉 **Stability Analysis** — See variance, min/max across epochs
-- 🌐 **Web Dashboard** — Serve results over HTTP with `lmspeedtest serve`
+- 🧠 **Thinking Mode** — Optional `--think` flag sends `"think": true` to Ollama and LM Studio
+- 🌐 **Web Dashboard** — Serve results over HTTP with `lmspeedtest serve`; chart bars show context size
 - 🔐 **Auth Support** — Bearer token authentication for remote Ollama/LM Studio instances
 - 🖥️ **Remote-Friendly** — Works with local or remote Ollama/LM Studio servers
 - 🏢 **Multi-Server Support** — Manage and benchmark multiple Ollama/LM Studio servers
@@ -140,8 +141,8 @@ chmod +x lmspeedtest
 | `doctor` | Run diagnostics: check config, connectivity, and permissions |
 | `models [max_gb] [name_filter]` | List models with metadata (params, quantization) |
 | `test <max_gb> [opts]` | Benchmark matching models |
-| `dashboard` | Show latest results per model |
-| `compare <model>` | Compare all context sizes for a model |
+| `dashboard [name_filter]` | Show latest results per model, optionally filtered by name |
+| `compare <query>` | Compare results — partial name match across all stored models |
 | `completions [shell]` | Generate shell completion scripts (bash, zsh, fish) |
 | `export [--format fmt]` | Export results (csv, json, benchstat, markdown) |
 | `reset` | Clear all benchmark results |
@@ -152,17 +153,20 @@ chmod +x lmspeedtest
 ### Test Options
 
 ```bash
-./lmspeedtest test 8                    # Interactive TUI selection
-./lmspeedtest test 8 64k                # Use 64k context window
-./lmspeedtest test 8 32k qwen           # Filter by name + context
-./lmspeedtest test 8 llama,gemma4       # Multi-filter: match any name
-./lmspeedtest test 8 --all              # Benchmark all (skip TUI)
-./lmspeedtest test 8 --epochs 3         # Run 3 epochs, keep best
-./lmspeedtest test 8 --template code    # Code generation prompt
-./lmspeedtest test 8 --template chat    # Short chat prompt
-./lmspeedtest test 8 --template long    # Long-form writing (default)
+./lmspeedtest test 8                       # Interactive TUI selection
+./lmspeedtest test 8 64k                   # Use 64k context window
+./lmspeedtest test 8 32k qwen              # Filter by name + context
+./lmspeedtest test 8 llama,gemma4          # Multi-filter: match any name
+./lmspeedtest test 8 --all                 # Benchmark all (skip TUI)
+./lmspeedtest test 8 --epochs 3            # Run 3 epochs, keep best
+./lmspeedtest test 8 --template code       # Code generation prompt
+./lmspeedtest test 8 --template chat       # Short chat prompt
+./lmspeedtest test 8 --template long       # Long-form writing (default)
 ./lmspeedtest test 8 --prompt-file path.txt  # Custom prompt from file
+./lmspeedtest test 8 --think               # Enable thinking/reasoning mode
 ```
+
+> **Note:** Thinking mode (`--think`) sends `"think": true` to Ollama and LM Studio. Warmup runs always use `think: false` regardless of this flag.
 
 ### Doctor Exit Codes
 
@@ -242,6 +246,15 @@ benchstat results.bench
 ./lmspeedtest test 8 --all
 ./lmspeedtest compare llama3.2:latest
 # Shows results from all servers with server column
+
+# Partial/fuzzy compare — matches any model containing "qwen"
+./lmspeedtest compare qwen
+
+# Dashboard filtered by name
+./lmspeedtest dashboard qwen
+
+# Benchmark with thinking/reasoning mode enabled
+./lmspeedtest test 8 qwen --think
 ```
 
 ---

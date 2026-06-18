@@ -176,11 +176,17 @@ func testCmd() {
 	template := "long"
 	allMode := false
 	promptFile := ""
+	think := false
 	argIdx := 3
 	for argIdx < len(os.Args) {
 		arg := os.Args[argIdx]
 		if arg == "--all" {
 			allMode = true
+			argIdx++
+			continue
+		}
+		if arg == "--think" {
+			think = true
 			argIdx++
 			continue
 		}
@@ -283,11 +289,15 @@ func testCmd() {
 		}
 		options = append(options, huh.NewOption("Quit", quitSentinel))
 
+		desc := fmt.Sprintf("Local models ≤ %.1f GB • %s context • %d epoch(s)", maxGB, ctxLabel, epochs)
+		if think {
+			desc += " • thinking enabled"
+		}
 		form := huh.NewForm(
 			huh.NewGroup(
 				huh.NewMultiSelect[string]().
 					Title("Select models to benchmark").
-					Description(fmt.Sprintf("Local models ≤ %.1f GB • %s context • %d epoch(s)", maxGB, ctxLabel, epochs)).
+					Description(desc).
 					Options(options...).
 					Value(&selected).
 					Height(10),
@@ -339,18 +349,24 @@ func testCmd() {
 	for _, model := range selected {
 		atomic.StoreInt32(&sigCount, 0)
 
-		fmt.Printf("\n%s %s (%s context, %s template)...\n",
+		thinkStr := ""
+		if think {
+			thinkStr = ", thinking"
+		}
+		fmt.Printf("\n%s %s (%s context, %s template%s)...\n",
 			infoStyle.Render("→ Testing"),
 			modelNameStyle.Render(model),
 			ctxStyle.Render(ctxLabel),
-			infoStyle.Render(template))
+			infoStyle.Render(template),
+			thinkStr)
 
 		if profile.Provider == "lmstudio" {
 			fmt.Printf("  %s\n", infoStyle.Render("Skipping warmup for LM Studio; measured run will load the model after cleanup."))
 		} else {
 			fmt.Printf("  %s ", infoStyle.Render("Warmup run..."))
-			_, _, _, _, _ = runSpeedTest(model, contextSize, "Hello")
+			_, _, _, _, _ = runSpeedTest(model, contextSize, "Hello", false)
 			fmt.Println()
+			time.Sleep(1 * time.Second)
 		}
 
 		var epochResults []TestResult
@@ -362,7 +378,7 @@ func testCmd() {
 			if epochs > 1 {
 				fmt.Printf("  %s %d/%d...\n", infoStyle.Render("Epoch"), i+1, epochs)
 			}
-			tps, promptEvalTPS, ttft, loadDuration, itl := runSpeedTest(model, contextSize, prompt)
+			tps, promptEvalTPS, ttft, loadDuration, itl := runSpeedTest(model, contextSize, prompt, think)
 			if tps > 0 {
 				fmt.Printf("\r  %s %.2f %s (TTFT: %s, load: %s, ITL: %s)\n",
 					infoStyle.Render("→"),

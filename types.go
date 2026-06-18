@@ -9,7 +9,7 @@ const (
 )
 
 var (
-	version = "0.3.8-dev"
+	version = "0.4.1"
 	commit  = "unknown"
 	date    = "unknown"
 )

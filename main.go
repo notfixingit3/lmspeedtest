@@ -97,6 +97,7 @@ func printUsage() {
 	fmt.Printf("  %s  %s\n", infoStyle.Render("--epochs N"), "Run N epochs per model, keep best result")
 	fmt.Printf("  %s  %s\n", infoStyle.Render("--template T"), "Prompt template: code, chat, long (default)")
 	fmt.Printf("  %s  %s\n", infoStyle.Render("--prompt-file path"), "Use custom prompt from file")
+	fmt.Printf("  %s  %s\n", infoStyle.Render("--think"), "Enable thinking/reasoning mode (opt-in)")
 	fmt.Println()
 	fmt.Println(headerStyle.Render("EXAMPLES"))
 	fmt.Println()

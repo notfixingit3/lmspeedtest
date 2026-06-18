@@ -355,13 +355,26 @@ func compareCmd() {
 		fmt.Println("Usage: lmspeedtest compare <model_name>")
 		return
 	}
-	modelName := os.Args[2]
+	modelQuery := strings.ToLower(os.Args[2])
 
 	var allTests []TestResult
+	seen := make(map[string]bool)
+	var matchedNames []string
 	for _, serverData := range results {
-		if tests, ok := serverData[modelName]; ok {
-			allTests = append(allTests, tests...)
+		for modelKey, tests := range serverData {
+			if strings.Contains(strings.ToLower(modelKey), modelQuery) {
+				allTests = append(allTests, tests...)
+				if !seen[modelKey] {
+					matchedNames = append(matchedNames, modelKey)
+					seen[modelKey] = true
+				}
+			}
 		}
+	}
+
+	displayName := os.Args[2]
+	if len(matchedNames) == 1 {
+		displayName = matchedNames[0]
 	}
 
 	if len(allTests) == 0 {
@@ -369,8 +382,8 @@ func compareCmd() {
 			_ = json.NewEncoder(os.Stdout).Encode([]TestResult{})
 		} else {
 			fmt.Printf("%s %s\n",
-				warningStyle.Render("No results found for model:"),
-				modelNameStyle.Render(modelName))
+				warningStyle.Render("No results found matching:"),
+				modelNameStyle.Render(displayName))
 		}
 		return
 	}
@@ -385,7 +398,7 @@ func compareCmd() {
 	}
 
 	fmt.Printf("\n%s\n",
-		titleStyle.Render(fmt.Sprintf("📊 Comparing %s", modelName)))
+		titleStyle.Render(fmt.Sprintf("📊 Comparing %s", displayName)))
 	fmt.Println(separatorStyle.Render(strings.Repeat("═", 110)))
 	fmt.Printf("%s %s %s %s %s %s\n",
 		headerStyle.Render(fmt.Sprintf("%10s", "CONTEXT")),
@@ -1334,7 +1347,7 @@ function renderChart(data){
     div.setAttribute('data-model',r.id);
     div.innerHTML=
       '<div class="chart-bar-label">'+
-        '<span class="chart-bar-label-name">'+providerLogoHTML(r.server_provider)+escHtml(r.model)+' <small>'+escHtml(r.server_name||r.server_host||'')+'</small></span>'+
+        '<span class="chart-bar-label-name">'+providerLogoHTML(r.server_provider)+escHtml(r.model)+' <small>'+escHtml(r.server_name||r.server_host||'')+'</small> <span class="badge-context">'+Math.round(r.context/1024)+'k</span></span>'+
         '<span class="chart-bar-label-val">'+r.tps.toFixed(1)+' tok/s</span>'+
       '</div>'+
       '<div class="chart-bar-track">'+
@@ -1741,14 +1754,14 @@ if(document.readyState==='loading'){
 				pct := (r.TPS / maxChartTPS) * 100
 				fmt.Fprintf(w, `      <div class="chart-bar-wrap" data-model="%s">
         <div class="chart-bar-label">
-          <span class="chart-bar-label-name">%s%s <small>%s</small></span>
+          <span class="chart-bar-label-name">%s%s <small>%s</small> <span class="badge-context">%dk</span></span>
           <span class="chart-bar-label-val">%.1f tok/s</span>
         </div>
         <div class="chart-bar-track">
           <div class="chart-bar-fill" style="width:%.1f%%" role="img" aria-label="%s relative speed %.1f%%"></div>
         </div>
       </div>
-`, resultDisplayKey(r), providerLogoHTML(resultServerProvider(r)), html.EscapeString(r.Model), html.EscapeString(resultServerLabel(r)), r.TPS, pct, resultDisplayKey(r), pct)
+`, resultDisplayKey(r), providerLogoHTML(resultServerProvider(r)), html.EscapeString(r.Model), html.EscapeString(resultServerLabel(r)), r.Context/1024, r.TPS, pct, resultDisplayKey(r), pct)
 			}
 			fmt.Fprint(w, `    </div>
   </div>
