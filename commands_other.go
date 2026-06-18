@@ -630,7 +630,7 @@ func doctorCmd() {
 		fmt.Printf("%s  Config parseable\n", warningStyle.Render("⚠️"))
 		warnings++
 	} else {
-		data, err := os.ReadFile(configPath)
+		data, err := os.ReadFile(configPath) // #nosec G304 -- path from getConfigPath(), fixed under ~/.lmspeedtest/
 		if err != nil {
 			fmt.Printf("%s  Config readable: %v\n", errorStyle.Render("❌"), err)
 			configErrors++
@@ -794,7 +794,7 @@ func doctorCmd() {
 		fmt.Printf("%s  Results file missing (no results yet)\n", warningStyle.Render("⚠️"))
 		warnings++
 	} else {
-		data, err := os.ReadFile(resultsPath)
+		data, err := os.ReadFile(resultsPath) // #nosec G304 -- path from getResultsPath(), fixed under ~/.lmspeedtest/
 		if err != nil {
 			fmt.Printf("%s  Results file readable: %v\n", errorStyle.Render("❌"), err)
 			dataErrors++
